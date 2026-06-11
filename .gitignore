@@ -1,5 +1,7 @@
 # Prerequisites
 *.d
+*.json
+*.vs
 
 # Compiled Object files
 *.slo
@@ -13,6 +15,8 @@
 
 # Linker files
 *.ilk
+*.manifest
+*.lnk
 
 # Debugger Files
 *.pdb
