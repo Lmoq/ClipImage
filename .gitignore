@@ -1,6 +1,5 @@
 # Prerequisites
 *.d
-*.json
 *.vs
 
 # Compiled Object files

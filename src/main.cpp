@@ -1,4 +1,5 @@
 #include <iostream>
+#include <algorithm>
 #include <thread>
 #include <deque>
 #include <chrono>
@@ -9,24 +10,23 @@
 
 static BOOL bListening = FALSE;
 
-
 int WINAPI WinMain( _In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd )
 {
-    update_interval = 500;
+    fullscreen_only = false;
+    update_interval = 100;
 
     system_screen_width = GetSystemMetrics( SM_CXSCREEN );
     system_screen_height = GetSystemMetrics( SM_CYSCREEN );
 
-    fullscreen_only = false;
-
     Hotkey::add_hotkey( { VK_LCONTROL, VK_F10 }, Hotkey::terminate, NULL, TRUE );
-    Hotkey::add_hotkey( { VK_LCONTROL, VK_LEFT, VK_RIGHT }, []() { std::thread( togglePFullscreen ).detach(); }, NULL, TRUE );
-
+    Hotkey::add_hotkey( { VK_LCONTROL, VK_LEFT, VK_RIGHT }, [](){ std::thread( togglePFullscreen ).detach(); }, NULL, TRUE );
+    Hotkey::add_hotkey( { VK_OEM_PERIOD, VK_UP }, []() { std::thread( showClipImage ).detach(); }, NULL, TRUE );
+    Hotkey::add_hotkey( { VK_LCONTROL, VK_OEM_3 }, [](){ std::thread( togglePAutosave ).detach(); }, NULL, TRUE);
+    
     Hotkey::run();
     Hotkey::wait();
     return 0;
 }
-
 
 LRESULT CALLBACK ClipWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
 {
@@ -53,20 +53,16 @@ LRESULT CALLBACK ClipWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam
             return 0;
 
         case WM_CLIPBOARDUPDATE:
-
             if ( !getLatestImage() ) {
                 return 0;
             }
-            
             if ( !spawned_imageThread ) 
             {
                 spawned_imageThread = true;
                 std::thread( imageWriteThread ).detach();
             }
-            
             return 0;
     }
-
     return DefWindowProc( hWnd, uMsg, wParam, lParam );
 }
 
@@ -98,7 +94,31 @@ void togglePFullscreen()
     std::string buffer; buffer.resize( 128 );
 
     sprintf( buffer.data(), "Save only fullscreen snips : %s", fullscreen_only ? "true" : "false" );
-    MessageBox( Hotkey::hWnd, buffer.c_str(), "Null", MB_OK );
+    MessageBox( Hotkey::hWnd, buffer.c_str(), "ClipImage", MB_OK );
+}
+
+void togglePAutosave()
+{
+    autoSave = !autoSave;
+    std::string buffer; buffer.resize( 128 );
+
+    sprintf( buffer.data(), "AutoSave : %s", autoSave ? "true" : "false" );
+    MessageBox( Hotkey::hWnd, buffer.c_str(), "ClipImage", MB_OK );
+}
+
+std::vector<int> abortKeys{ VK_ESCAPE, VK_BACK, -1 };
+void showClipImage()
+{
+    if ( !autoSave && savedImageArray ) 
+    {
+        cv::imshow( "ClipImage", image_array );
+        int keycode = cv::waitKeyEx( 0 );
+
+        if ( std::find( abortKeys.begin(), abortKeys.end(), keycode ) == abortKeys.end() ) {
+            writeImageToFile();
+        }
+        cv::destroyAllWindows();
+    }
 }
 
 void Hotkey::terminate()

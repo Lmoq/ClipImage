@@ -6,19 +6,23 @@
 
 int system_screen_width;
 int system_screen_height;
+long update_interval = 100;
 
 bool fullscreen_only;
-bool spawned_imageThread = false;
+bool autoSave = true;
 
-long update_interval = 100;
+bool spawned_imageThread = false;
+bool savedImageArray = false;
+
+cv::Mat image_array{};
 std::deque<PBITMAPINFO> BInfo_Queue;
 
 bool getLatestImage()
 {
-    UINT format = 0;
- 
-    char format_string[] = "CF_DIB";
     UINT target_format = CF_DIB;
+    char format_string[] = "CF_DIB";
+
+    savedImageArray = false;
 
     if ( !IsClipboardFormatAvailable( target_format ) ) {
         printf( "Format [%s] not available\n", format_string );
@@ -76,13 +80,33 @@ bool bitmapToImage( PBITMAPINFO pBinfo )
             return false;
         }
     }
-    // Read the bitmap as Mat image with the flag CV_8UC4 
-    // to match the data type and include the alpha channel 
-    cv::Mat image( (int)header.biHeight, (int)header.biWidth, CV_8UC4, (cv::uint8_t *)pBinfo->bmiColors );
+    image_array.release();
+    cv::Mat image;
+    image.release();
 
-    // Flip the bitmap image back to original
-    cv::flip( image, image, 0 );
+    if ( header.biCompression == BI_RGB ) 
+    {
+        // For BI_RGB format, additional parameter step is added( width in bytes accounting the padding )
+        // Distortion or misplace of pixels happens if not param is not filled, 
+        // since cv::Mat() initialization doesn't compensate for the additional bytes padding
+        image = cv::Mat( static_cast<int>( header.biHeight ), static_cast<int>( header.biWidth ), CV_8UC3, reinterpret_cast<cv::uint8_t *>(pBinfo->bmiColors), ( ( header.biWidth * 24 + 31 ) / 32 ) * 4 );
+    }
+    else if ( header.biCompression == BI_BITFIELDS )
+    {
+        // Read the bitmap as Mat image with the flag CV_8UC4 
+        // to match the data type and include the alpha channel
+        image = cv::Mat( static_cast<int>( header.biHeight ), static_cast<int>( header.biWidth ), CV_8UC4, reinterpret_cast<cv::uint8_t *>(pBinfo->bmiColors) );
+    }
+    image.copyTo( image_array );
 
+    // Flip bitmap vertically since the image is bottom-up DIB, where pixel origin is from bottom left
+    cv::flip( image_array, image_array, 0 );
+    spawned_imageThread = false;
+    return true;
+}
+
+void writeImageToFile()
+{
     // Set file destination
     std::string filename; filename.resize( 128 );
 
@@ -93,46 +117,45 @@ bool bitmapToImage( PBITMAPINFO pBinfo )
     std::string username; username.resize( 128 );
 
     DWORD result = GetEnvironmentVariable( "username", username.data(), username.size() );
-    if ( result == 0 ) 
+    if ( result == 0 )
     {
         if ( GetLastError() == ERROR_ENVVAR_NOT_FOUND ) {
             printf( "Variable <%s> not found\n", "username" );
-            spawned_imageThread = false;
-            return false;
+            return;
         }
     }
     else if ( username.size() < result )
     {
         printf( "Insufficient storage, bytes to write : %d\n", result );
-        spawned_imageThread = false;
-        return false;
+        return;
     }
 
     std::string dst; dst.resize( result + filename_size + 18 );
-    if ( !sprintf( dst.data(), "C:/Users/%s/Desktop/%s", username.c_str(), filename.c_str() ) ) 
+    if ( !sprintf( dst.data(), "C:/Users/%s/Desktop/%s", username.c_str(), filename.c_str() ) )
     {
         printf( "Sprintf failed\n" );
-        spawned_imageThread = false;
-        return false;
+        return;
     }
- 
-    if ( !cv::imwrite( dst, image ) ) {
-        printf( "CV IMWRITE failed : \n" );
+    if ( !cv::imwrite( dst, image_array ) ) {
+        printf( "cv::imwrite() failed : \n" );
         spawned_imageThread = false;
-        return false;
+        return;
     }
-
     printf( "Saved to : %s\n", dst.c_str() );
-    spawned_imageThread = false;
-    return true;
 }
 
 void imageWriteThread()
 {
-    // Clipboard will be checked after few milliseconds
-    // to catch sudden mutltiple clipboard update messages
+    // Thread will sleep for an interval to catch the latest clipboard update,
+    // since some program dispatch multiple updates at very short amount of time
     std::this_thread::sleep_for( std::chrono::milliseconds( update_interval ) );
 
-    bitmapToImage( BInfo_Queue.back() );
+    if ( bitmapToImage( BInfo_Queue.back() ) ) {
+        savedImageArray = true;
+        
+        if ( autoSave ) {
+            writeImageToFile();
+        }
+    }
     BInfo_Queue.clear();
 }
