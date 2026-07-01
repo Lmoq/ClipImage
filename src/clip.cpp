@@ -15,7 +15,7 @@ bool spawned_imageThread = false;
 bool savedImageArray = false;
 
 cv::Mat image_array{};
-std::deque<PBITMAPINFO> BInfo_Queue;
+std::deque<std::vector<BYTE>> BInfo_Queue;
 
 bool getLatestImage()
 {
@@ -30,6 +30,13 @@ bool getLatestImage()
     }
     else {
         printf( "Format [%s] available\n", format_string );
+    }
+    if ( !IsClipboardFormatAvailable( CF_DIBV5 ) ) {
+        printf( "Format [%s] not available\n", "CF_DIBV5" );
+        return false;
+    }
+    else {
+        printf( "Format [%s] available\n", "CF_DIBV5" );
     }
     if ( !OpenClipboard( NULL ) ) {
         printf( "OpenClipboard failed, error code : %d\n", GetLastError() );
@@ -57,51 +64,65 @@ bool GetBits( UINT8 CF_FORMAT )
     }
     else
     {
-        PBITMAPINFO pBinfo = (PBITMAPINFO)GlobalLock( bHandle );
-        if ( pBinfo == NULL ) {
+        LPVOID pMem = GlobalLock( bHandle );
+        if ( pMem == NULL ) {
             printf( "GlobalLock failed, code : %d\n", GetLastError() );
             return false;
         }
+        SIZE_T size = GlobalSize( bHandle );
+        printf( "HandleSize : %zd\n", size );
+
+        // Create own copy
+        std::vector<BYTE> dib( size );
+        memcpy( dib.data(), pMem, size);
+
         GlobalUnlock( bHandle );
 
-        // Append BITMAPINFO object to queue
-        BInfo_Queue.push_back( pBinfo );
+        // Append bitmap to queue
+        BInfo_Queue.push_back( dib );
+
     }
     return true;
 }
 
-bool bitmapToImage( PBITMAPINFO pBinfo )
+bool bitmapToImage( std::vector<BYTE> &dib )
 {
+    PBITMAPINFO pBinfo = reinterpret_cast<PBITMAPINFO>( dib.data() );
     BITMAPINFOHEADER header = pBinfo->bmiHeader;
-    if ( fullscreen_only )
+
+    if ( fullscreen_only ) 
     {
         if ( !( system_screen_width == header.biWidth && system_screen_height == header.biHeight ) ) {
             printf( "Image is not fullscreen\n" );
             return false;
         }
     }
-    image_array.release();
     cv::Mat image;
-    image.release();
 
+    BYTE *pixel_data;
     if ( header.biCompression == BI_RGB ) 
     {
-        // For BI_RGB format, additional parameter step is added( width in bytes accounting the padding )
-        // Distortion or misplace of pixels happens if not param is not filled, 
-        // since cv::Mat() initialization doesn't compensate for the additional bytes padding
-        image = cv::Mat( static_cast<int>( header.biHeight ), static_cast<int>( header.biWidth ), CV_8UC3, reinterpret_cast<cv::uint8_t *>(pBinfo->bmiColors), ( ( header.biWidth * 24 + 31 ) / 32 ) * 4 );
+        pixel_data = reinterpret_cast<BYTE *>( pBinfo->bmiColors );
+        if ( header.biBitCount == 24 ) {
+            // Since 24 bpp is not a complete 8 bytes, step in bytes should be specified to avoid distorted or misplaced pixels
+            image = cv::Mat( static_cast<int>( header.biHeight ), static_cast<int>( header.biWidth ), CV_8UC3, pixel_data, ( ( header.biWidth * 24 + 31 ) / 32 ) * 4 );
+        }
+        else if ( header.biBitCount == 32 ) {
+            image = cv::Mat( static_cast<int>( header.biHeight ), static_cast<int>( header.biWidth ), CV_8UC4, pixel_data );
+        }
     }
     else if ( header.biCompression == BI_BITFIELDS )
     {
-        // Read the bitmap as Mat image with the flag CV_8UC4 
-        // to match the data type and include the alpha channel
-        image = cv::Mat( static_cast<int>( header.biHeight ), static_cast<int>( header.biWidth ), CV_8UC4, reinterpret_cast<cv::uint8_t *>(pBinfo->bmiColors) );
+        // At this compression type, pBinfo contains all the info where the pixel data address at ( + headerSize + rgb masks memory width )
+        pixel_data = reinterpret_cast<BYTE *>( pBinfo ) + pBinfo->bmiHeader.biSize + ( 3 * sizeof( DWORD ) );
+        image = cv::Mat( static_cast<int>( header.biHeight ), static_cast<int>( header.biWidth ), CV_8UC4, pixel_data );
     }
     image.copyTo( image_array );
 
     // Flip bitmap vertically since the image is bottom-up DIB, where pixel origin is from bottom left
     cv::flip( image_array, image_array, 0 );
     spawned_imageThread = false;
+
     return true;
 }
 

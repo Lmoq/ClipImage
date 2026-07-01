@@ -4,6 +4,7 @@
 //#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <deque>
+#include <vector>
 #include <opencv2/opencv.hpp>
 
 extern int system_screen_width;
@@ -16,11 +17,11 @@ extern bool spawned_imageThread;
 extern bool savedImageArray;
 
 extern cv::Mat image_array;
-extern std::deque<PBITMAPINFO> BInfo_Queue;
+extern std::deque<std::vector<BYTE>> BInfo_Queue;
 
 bool GetBits( UINT8 CF_FORMAT );
 bool getLatestImage();
-bool bitmapToImage( PBITMAPINFO bInfo );
+bool bitmapToImage( std::vector<BYTE> &dib );
 
 void imageWriteThread();
 void writeImageToFile();

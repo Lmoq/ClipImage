@@ -19,7 +19,7 @@ int WINAPI WinMain( _In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     system_screen_height = GetSystemMetrics( SM_CYSCREEN );
 
     Hotkey::add_hotkey( { VK_LCONTROL, VK_F10 }, Hotkey::terminate, NULL, TRUE );
-    Hotkey::add_hotkey( { VK_LCONTROL, VK_LEFT, VK_RIGHT }, [](){ std::thread( togglePFullscreen ).detach(); }, NULL, TRUE );
+    Hotkey::add_hotkey( { VK_LCONTROL, VK_UP, VK_DOWN }, [](){ std::thread( togglePFullscreen ).detach(); }, NULL, TRUE );
     Hotkey::add_hotkey( { VK_OEM_PERIOD, VK_UP }, []() { std::thread( showClipImage ).detach(); }, NULL, TRUE );
     Hotkey::add_hotkey( { VK_LCONTROL, VK_OEM_3 }, [](){ std::thread( togglePAutosave ).detach(); }, NULL, TRUE);
     
