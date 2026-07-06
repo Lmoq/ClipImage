@@ -16,6 +16,8 @@ extern bool autoSave;
 extern bool spawned_imageThread;
 extern bool savedImageArray;
 
+extern DWORD lastSequenceNumber;
+
 extern cv::Mat image_array;
 extern std::deque<std::vector<BYTE>> BInfo_Queue;
 
