@@ -1,4 +1,5 @@
 #include <iostream>
+#include <filesystem>
 #include <ctime>
 #include <clip.hpp>
 #include <vector>
@@ -38,6 +39,7 @@ bool getLatestImage()
     // Difference of current and last sequence number greater than the value 2 indicates that new content is pasted to clipboard
     // The latter only shows that an app that previously accessed clipboard, closes
     printf( "Last sequence number : %d\n", lastSequenceNumber );
+    printf( "Diff seq : %d\n", diff );
     if ( diff <= 2 ) {
         return false;
     }
@@ -136,13 +138,14 @@ bool bitmapToImage( std::vector<BYTE> &dib )
     return true;
 }
 
+namespace fs = std::filesystem;
 void writeImageToFile()
 {
     // Set file destination
     std::string filename; filename.resize( 128 );
 
     std::time_t t = std::time( nullptr );
-    size_t filename_size = std::strftime( filename.data(), filename.size(), "%Y-%b-%d %H-%M-%S.png", std::localtime( &t ) );
+    size_t filename_size = std::strftime( filename.data(), filename.size(), "%Y-%m-%d %H-%M-%S.png", std::localtime( &t ) );
 
     // Retrieve username env variable
     std::string username; username.resize( 128 );
@@ -161,12 +164,18 @@ void writeImageToFile()
         return;
     }
 
-    std::string dst; dst.resize( result + filename_size + 18 );
-    if ( !sprintf( dst.data(), "C:/Users/%s/Desktop/%s", username.c_str(), filename.c_str() ) )
+    std::string dst; dst.resize( result + filename_size + 30 );
+    if ( !sprintf( dst.data(), "C:/Users/%s/Documents/ClipImage/%s", username.c_str(), filename.c_str() ) )
     {
         printf( "Sprintf failed\n" );
         return;
     }
+    fs::path dst_folder = fs::path( dst ).parent_path();
+
+    if ( fs::create_directory( dst_folder ) ) {
+        printf( "Created save folder : %ls\n", dst_folder.c_str() );
+    }
+
     if ( !cv::imwrite( dst, image_array ) ) {
         printf( "cv::imwrite() failed : \n" );
         spawned_imageThread = false;
